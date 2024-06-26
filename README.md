@@ -1,3 +1,7 @@
+# API
+Added an inter-plugin API for consistency of surf physics.  
+See forwards in include/momsurffix2.inc.
+
 # MomSurfFix
 Momentum mod surf/ramp fix ported to CSGO and CSS.
 
