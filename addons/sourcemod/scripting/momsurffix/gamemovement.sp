@@ -1,3 +1,5 @@
+Handle g_hForward_OnClipVelocity;
+
 enum struct CGameMovementOffsets
 {
 	int player;
@@ -332,45 +334,111 @@ stock void UnlockTraceFilter(CGameMovement pThis, CTraceFilterSimple filter)
 	SDKCall(gUnlockTraceFilter, pThis.Address, filter.Address);
 }
 
-stock int ClipVelocity(CGameMovement pThis, Vector invec, Vector normal, Vector out, float overbounce)
+stock int GetClientFromPlayerHandle(CBaseHandle playerHandle)
 {
-	if(gEngineVersion == Engine_CSGO)
-	{
-		ASSERT(pThis.Address != Address_Null);
-		return SDKCall(gClipVelocity, pThis.Address, invec.Address, normal.Address, out.Address, overbounce);
-	}
-	else if (gEngineVersion == Engine_CSS && gOSType == OSLinux)
-	{
-		return SDKCall(gClipVelocity, pThis.Address, invec.Address, normal.Address, out.Address, overbounce);
-	}
-	else
-	{
-		float backoff, angle, adjust;
-		int blocked;
-		
-		angle = normal.z;
-		
-		if(angle > 0.0)
-			blocked |= 0x01;
-		if(CloseEnoughFloat(angle, 0.0))
-			blocked |= 0x02;
-		
-		backoff = invec.Dot(VectorToArray(normal)) * overbounce;
-		
-		out.x = invec.x - (normal.x * backoff);
-		out.y = invec.y - (normal.y * backoff);
-		out.z = invec.z - (normal.z * backoff);
-		
-		adjust = out.Dot(VectorToArray(normal));
-		if(adjust < 0.0)
-		{
-			out.x -= (normal.x * adjust);
-			out.y -= (normal.y * adjust);
-			out.z -= (normal.z * adjust);
-		}
-		
-		return blocked;
-	}
+    int intHandle = view_as<int>(playerHandle);
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (IsClientInGame(i) && intHandle == GetClientSerial(i))
+        {
+            return i;
+        }
+    }
+    return 0;
+}
+
+stock int GetClientFromGameMovement(CGameMovement pThis)
+{
+    return GetClientFromPlayerHandle(pThis.mv.m_nPlayerHandle);
+}
+
+stock int ClipVelocity(CGameMovement pThis, Vector inVec, Vector normal, Vector out, float overbounce)
+{
+    float backoff, angle, adjust;
+    int blocked;
+
+    if(gEngineVersion == Engine_CSGO)
+    {
+        ASSERT(pThis.Address != Address_Null);
+        SDKCall(gClipVelocity, pThis.Address, inVec.Address, normal.Address, out.Address, overbounce);
+    }
+    else if (gEngineVersion == Engine_CSS && gOSType == OSLinux)
+    {
+        SDKCall(gClipVelocity, pThis.Address, inVec.Address, normal.Address, out.Address, overbounce);
+    }
+    else
+    {
+        angle = normal.z;
+        
+        if(angle > 0.0)
+            blocked |= 0x01;
+        if(CloseEnoughFloat(angle, 0.0))
+            blocked |= 0x02;
+        
+        backoff = inVec.Dot(VectorToArray(normal)) * overbounce;
+        
+        out.x = inVec.x - (normal.x * backoff);
+        out.y = inVec.y - (normal.y * backoff);
+        out.z = inVec.z - (normal.z * backoff);
+        
+        adjust = out.Dot(VectorToArray(normal));
+        if(adjust < 0.0)
+        {
+            out.x -= (normal.x * adjust);
+            out.y -= (normal.y * adjust);
+            out.z -= (normal.z * adjust);
+        }
+    }
+
+    // Call the forward
+    int client = GetClientFromGameMovement(pThis);
+    float inVelocity[3], normalArray[3], outVelocity[3];
+    inVec.ToArray(inVelocity);
+    normal.ToArray(normalArray);
+    out.ToArray(outVelocity);
+
+    Action result;
+    Call_StartForward(g_hForward_OnClipVelocity);
+    Call_PushCell(client);
+    Call_PushArray(inVelocity, 3);
+    Call_PushArray(normalArray, 3);
+    Call_PushFloatRef(overbounce);
+    Call_Finish(result);
+
+    if (result == Plugin_Changed)
+    {
+        // Use the modified overbounce value and recalculate if necessary
+        if(gEngineVersion == Engine_CSGO)
+        {
+            SDKCall(gClipVelocity, pThis.Address, inVec.Address, normal.Address, out.Address, overbounce);
+        }
+        else if (gEngineVersion == Engine_CSS && gOSType == OSLinux)
+        {
+            SDKCall(gClipVelocity, pThis.Address, inVec.Address, normal.Address, out.Address, overbounce);
+        }
+        else
+        {
+            // Recalculate using the new overbounce value
+            backoff = inVec.Dot(VectorToArray(normal)) * overbounce;
+            
+            out.x = inVec.x - (normal.x * backoff);
+            out.y = inVec.y - (normal.y * backoff);
+            out.z = inVec.z - (normal.z * backoff);
+            
+            adjust = out.Dot(VectorToArray(normal));
+            if(adjust < 0.0)
+            {
+                out.x -= (normal.x * adjust);
+                out.y -= (normal.y * adjust);
+                out.z -= (normal.z * adjust);
+            }
+        }
+    }
+    else if (result == Plugin_Handled)
+    {
+        // Do nothing, use the values as they were calculated before the forward
+    }
+    return blocked;
 }
 
 stock Vector GetPlayerMinsCSS(CGameMovement pThis, Vector vec)
