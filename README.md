@@ -1,6 +1,6 @@
 # API
 Added an inter-plugin API for consistency of surf physics.  
-See forwards in include/momsurffix2.inc.
+See forwards in include/momsurffix2.inc.  
 Example usage here: https://github.com/followingthefasciaplane/sm-surf-trainer/blob/main/surf-trainer-v2-momsurffix-api.sp
 
 # MomSurfFix
